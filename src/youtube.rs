@@ -41,10 +41,10 @@ pub struct Channel {
 impl Channel {
 
     // Create a new Channel
-    pub fn new(channel_name: String, channel_url: String, base_path: &PathBuf, filter_words: Vec<String>) -> Option<Channel> {
+    pub fn new(channel_name: String, channel_url: String, base_path: &PathBuf, filter_words: Vec<String>) -> Result<Channel, ()> {
 
         // Throw a tantrum if any of the args are empty
-        if &channel_name == "" || &channel_url == "" { return None; }
+        if &channel_name == "" || &channel_url == "" { return Err(()); }
 
         // Split the URL
         let split_url: Vec<_> = channel_url.split("/").into_iter().collect();
@@ -54,7 +54,7 @@ impl Channel {
             if split_url.iter().any(|&i| i == "channel") { ChannelType::Channel }
             else if split_url.iter().any(|&i| i == "user") { ChannelType::User }
             else if split_url.iter().any(|&i| i == "c") { ChannelType::C }
-            else { return None; }
+            else { return Err(()); }
         };
 
         // Get the actual ID
@@ -67,7 +67,7 @@ impl Channel {
         // Set up the paths
         let mut cfg_path = base_path.clone();
         cfg_path.push(format!("{}.json", id));
-        if let Err(_) = std::fs::File::create(&cfg_path) { return None; }
+        if let Err(_) = std::fs::File::create(&cfg_path) { return Err(()); }
 
         let mut pic_path = base_path.clone();
         pic_path.push("icons");
@@ -89,7 +89,7 @@ impl Channel {
         if let ChannelType::C = ret_channel.channel_type {
             if let Err(_) = ret_channel.get_true_channel() {
                 // For some reason, we couldn't update the channel ID
-                return None;
+                return Err(());
             }
         }
 
@@ -98,8 +98,8 @@ impl Channel {
         // Update the latest id
         if let Ok(latest_found_id) = ret_channel.get_vid_id_from_index(0) {
             ret_channel.latest_id = Some(latest_found_id);
-            Some(ret_channel)
-        } else { None }
+            Ok(ret_channel)
+        } else { Err(()) }
 
     } // end new
 
@@ -138,7 +138,7 @@ impl Channel {
     // Get the latest video ID
     pub fn get_vid_id_from_index(&self, index: u8) -> Result<String, ()> {
         // Make the command, execute it and get the stdout
-        let out = Command::new("youtube-dl").arg("--skip-download").arg("--playlist-end").arg(format!("{}", index+1)).arg("--dump-json").arg(self.get_feed_url()).output().unwrap();
+        let out = Command::new("youtube-dl").arg("--skip-download").arg("--playlist-item").arg(format!("{}", index+1)).arg("--dump-json").arg(self.get_feed_url()).output().unwrap();
         let out_str = str::from_utf8(&out.stdout).unwrap();
 
         // Verify the JSON can be parsed

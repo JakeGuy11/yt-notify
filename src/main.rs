@@ -4,8 +4,9 @@ use std::path::{PathBuf};
 use std::io::Write;
 use youtube::Channel;
 
+#[derive(Debug)]
 enum Intent {
-    AddChannel(Option<youtube::Channel>),
+    AddChannel(Result<youtube::Channel, ()>),
     RemoveChannel(String),
     EditChannel(String),
     StartDaemon,
@@ -17,14 +18,16 @@ fn main() {
     let mut usr_start_daemon = false;
 
     for current_intent in find_intents(&cfg_path).iter() {
+        println! ("{:?}", current_intent);
         match current_intent {
             Intent::AddChannel(channel_opt) => {
-                if let Some(channel) = channel_opt {
-                    println! ("{:?}", channel);
+                if let Ok(channel) = channel_opt {
                     if let Err(_) = youtube::Channel::write_channel_to_file(channel) {
-                        eprintln! ("Could not write channel to file.");
+                        eprintln! ("Could not write channel to file. Do you have permission?");
+                    } else {
+                        println! ("Added {} successfully.", channel.name);
                     }
-                } else { eprintln! ("Could not generate channel."); }
+                } else { eprintln! ("Could not verify that channel. Is the URL correct?"); }
             },
             Intent::RemoveChannel(id) => {
                 println! ("Eventually, I will remove the channel with id {}", id);
@@ -58,7 +61,7 @@ fn start_daemon(cfg_path: &PathBuf) {
 
         for channel in all_channels.iter() {
             let mut found_last_id = false;
-            for i in 0..5 {
+            for i in 0..3 {
                 // If we found it, keep going
                 if found_last_id { break; }
 
@@ -84,7 +87,7 @@ fn start_daemon(cfg_path: &PathBuf) {
 }
 
 fn notify_video(vid: &youtube::Video) {
-    println! ("{:?}", vid);
+    println! ("{:?}", vid.video_title);
 }
 
 // Parse command line arguments
@@ -110,7 +113,7 @@ fn find_intents(save_path: &PathBuf) -> std::vec::Vec<Intent> {
 }
 
 // Prompt the user for info about a channel, construct and return it
-fn prompt_channel(save_path: &PathBuf) -> Option<youtube::Channel> {
+fn prompt_channel(save_path: &PathBuf) -> Result<youtube::Channel, ()> {
     // Get everything we need for the video
     let name = prompt_string("Enter the nickname of the channel you'd like to add:");
     let url = prompt_string("Enter the URL of the channel you'd like to add:");
@@ -118,6 +121,7 @@ fn prompt_channel(save_path: &PathBuf) -> Option<youtube::Channel> {
     let mut keywords_string: Vec<String> = Vec::new();
     for current_str in keywords_str.split(",") { keywords_string.push(String::from(current_str)); }
 
+    println! ("Verifying and saving channel \"{}\"...", name);
     youtube::Channel::new(name, url, save_path, keywords_string)
 }
 
