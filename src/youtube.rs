@@ -21,15 +21,16 @@ enum ChannelType {
 #[derive(Debug)]
 pub struct Video {
     pub video_title: String,
-    video_id: String,
-    video_desc: String,
-    image: Option<PathBuf>
+    pub video_id: String,
+    pub video_desc: String,
+    pub is_live: bool,
+    pub tags: Option<Vec<String>>
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Channel {
     pub name: String,
-    channel_id: String,
+    pub channel_id: String,
     channel_type: ChannelType,
     filter: Vec<String>,
     path: PathBuf,
@@ -95,7 +96,7 @@ impl Channel {
         let _ = ret_channel.write_channel_to_file();
         
         // Update the latest id
-        if let Ok(latest_found_id) = ret_channel.get_latest_id() {
+        if let Ok(latest_found_id) = ret_channel.get_vid_id_from_index(0) {
             ret_channel.latest_id = Some(latest_found_id);
             Some(ret_channel)
         } else { None }
@@ -126,18 +127,18 @@ impl Channel {
     } // end get_req_url
 
     // Get the request url
-    fn get_vids_url(&mut self) -> String {
+    /*fn get_vids_url(&mut self) -> String {
         match self.channel_type {
             ChannelType::Channel => { format!("https://www.youtube.com/feeds/videos.xml?channel_id={}", self.channel_id) },
             ChannelType::User => { format!("https://www.youtube.com/feeds/videos.xml?user={}", self.channel_id) },
             ChannelType::C => { let _ = self.get_true_channel(); format!("https://www.youtube.com/feeds/videos.xml?channel_id={}", self.channel_id) }
         }
-    } // end get_req_url
+    } // end get_req_url */
 
     // Get the latest video ID
-    fn get_latest_id(&self) -> Result<String, ()> {
+    pub fn get_vid_id_from_index(&self, index: u8) -> Result<String, ()> {
         // Make the command, execute it and get the stdout
-        let out = Command::new("youtube-dl").arg("--skip-download").arg("--playlist-end").arg("1").arg("--dump-json").arg(self.get_feed_url()).output().unwrap();
+        let out = Command::new("youtube-dl").arg("--skip-download").arg("--playlist-end").arg(format!("{}", index+1)).arg("--dump-json").arg(self.get_feed_url()).output().unwrap();
         let out_str = str::from_utf8(&out.stdout).unwrap();
 
         // Verify the JSON can be parsed
@@ -173,34 +174,6 @@ impl Channel {
 
     } // end get_true_channel
 
-    pub fn get_latest_videos(&mut self) -> Vec<Video> {
-        // Get the RSS feed
-        let req_url = self.get_vids_url();
-        let rss_body = get_page_lines(&req_url);
-
-        // Get all the entries
-        let entries_regex = regex::Regex::new("<entry>|</entry>").unwrap();
-        let mut raw_entries_vec = entries_regex.split(rss_body.as_str()).collect::<Vec<_>>();
-        raw_entries_vec.remove(0);
-        let _ = raw_entries_vec.pop();
-
-        // Filter out our vec
-        let entries_vec: Vec<_> = raw_entries_vec.iter().filter(|&s| { if s == &"\n " { false } else { true } }).collect();
-
-        // Create the vec to return
-        let mut ret_vec: Vec<Video> = Vec::new();
-
-        // Go through the last 10 videos
-        for entry in entries_vec.iter() {
-            // Get the current video
-            let current_vid = populate_video_from_id(&String::from(**entry));
-            
-            ret_vec.push(current_vid);
-        }
-
-        ret_vec
-    } // end get_latest_videos
-
     pub fn write_channel_to_file(&self) -> Result<(), ()> {
         let json_string = serde_json::to_string(&self).unwrap();
         let mut file_to_save_to = std::fs::File::create(self.path.as_path()).unwrap();
@@ -209,8 +182,47 @@ impl Channel {
         else { Ok(()) }
     }
 
+    pub fn update_id(&self, id: Option<String>) {
+        let mut updated_ch = self.clone();
+        updated_ch.latest_id = id;
+        updated_ch.write_channel_to_file().unwrap();
+    }
+
 }
 
+pub fn populate_video_from_id(id: &String) -> Result<Video, ()> {
+    // Make the command, execute it and get the stdout
+    let out = Command::new("youtube-dl").arg("--dump-json").arg(format!("https://www.youtube.com/watch?v={}", id)).output().unwrap();
+    let out_str = str::from_utf8(&out.stdout).unwrap();
+
+    // Parse the json
+    if let Ok(parsed_out) = json::parse(out_str) {
+        let title = if let Some(parsed_title) = parsed_out["title"].as_str() { parsed_title } else { return Err(()) };
+        let desc = if let Some(parsed_desc) = parsed_out["description"].as_str() { parsed_desc } else { return Err(()) };
+        let live = if let Some(parsed_live) = parsed_out["is_live"].as_bool() { parsed_live } else { false };
+        let tags = {
+            let tags_raw = String::from(parsed_out["tags"].dump());
+            let mut chars = tags_raw.chars();
+            chars.next();
+            chars.next();
+            chars.next_back();
+            chars.next_back();
+            let bracketless_tags = String::from(chars.as_str());
+            let split = bracketless_tags.split("\",\"");
+            split.map(|st| String::from(st)).collect::<Vec<String>>()
+        };
+
+        Ok(Video {
+            video_title: String::from(title),
+            video_id: String::from(id),
+            video_desc: String::from(desc),
+            is_live: live,
+            tags: Some(tags)
+        })
+    } else { Err(()) }
+}
+
+/*
 fn populate_video_from_id(lines: &String) -> Video {
     // Get the title
     let titles_regex = regex::Regex::new("<title>|</title>").unwrap();
@@ -233,10 +245,10 @@ fn populate_video_from_id(lines: &String) -> Video {
         video_desc: desc,
         image: None
     }
-}
+}*/
 
-fn get_page_lines(url: &String) -> String {
+/*fn get_page_lines(url: &String) -> String {
     // Request it
     let res = easy_http_request::DefaultHttpRequest::get_from_url_str(url).unwrap().send().unwrap();
     String::from_utf8(res.body).unwrap()
-}
+}*/

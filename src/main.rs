@@ -57,15 +57,34 @@ fn start_daemon(cfg_path: &PathBuf) {
         }
 
         for channel in all_channels.iter() {
-            let latest_vids = channel.clone().get_latest_videos();
-            let latest_vid = latest_vids.get(0).unwrap();
-            println! ("{}'s latest video was found to be {}", channel.name, latest_vid.video_title);
+            let mut found_last_id = false;
+            for i in 0..5 {
+                // If we found it, keep going
+                if found_last_id { break; }
+
+                // Get the video
+                let latest_vid = channel.clone().get_vid_id_from_index(i).unwrap();
+                if let Ok(that_vid) = youtube::populate_video_from_id(&latest_vid) {
+                    // Check if the video is new
+                    found_last_id = that_vid.video_id == channel.channel_id;
+                    if i == 0 && !found_last_id {
+                        channel.update_id(Some(String::from(&that_vid.video_id)));
+                        notify_video(&that_vid);
+                    } else if !found_last_id {
+                        notify_video(&that_vid);
+                    }
+                }
+            }
         }
 
         // Wait for the next check
         all_channels = Vec::new();
         std::thread::sleep(std::time::Duration::from_secs(15));
     }
+}
+
+fn notify_video(vid: &youtube::Video) {
+    println! ("{:?}", vid);
 }
 
 // Parse command line arguments
