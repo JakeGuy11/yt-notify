@@ -188,6 +188,9 @@ impl Channel {
         updated_ch.write_channel_to_file().unwrap();
     }
 
+    pub fn get_latest_id(&self, default: &String) -> String {
+        if let Some(id) = &self.latest_id { String::from(id) } else { String::from(default) }
+    }
 }
 
 pub fn populate_video_from_id(id: &String) -> Result<Video, ()> {

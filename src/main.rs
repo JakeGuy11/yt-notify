@@ -59,25 +59,38 @@ fn start_daemon(cfg_path: &PathBuf) {
             all_channels.push(Channel::from_file(ch_path).unwrap());
         }
 
+        // Go through each channel
         for channel in all_channels.iter() {
+            // found the last notified id?
             let mut found_last_id = false;
+            let mut id_to_update: (Option<String>, bool) = (None, false);
+            // Got through the 3 latest videos
             for i in 0..3 {
                 // If we found it, keep going
                 if found_last_id { break; }
+                println! ("on iteration {}", i);
 
                 // Get the video
                 let latest_vid = channel.clone().get_vid_id_from_index(i).unwrap();
                 if let Ok(that_vid) = youtube::populate_video_from_id(&latest_vid) {
-                    // Check if the video is new
-                    found_last_id = that_vid.video_id == channel.channel_id;
+                    // check if it's the latest id
+                    println! ("{}, {}", that_vid.video_id, channel.get_latest_id(&that_vid.video_id));
+                    if that_vid.video_id == channel.get_latest_id(&that_vid.video_id) {
+                        id_to_update = (Some(String::from(&that_vid.video_id)), true);
+                        found_last_id = true;
+                    }
+
+                    // if it's the first video and 
                     if i == 0 && !found_last_id {
-                        channel.update_id(Some(String::from(&that_vid.video_id)));
+                        id_to_update.0 = Some(String::from(&that_vid.video_id));
+                        id_to_update.1 = true;
                         notify_video(&that_vid);
                     } else if !found_last_id {
                         notify_video(&that_vid);
                     }
                 }
             }
+            if id_to_update.1 { channel.update_id(id_to_update.0); }
         }
 
         // Wait for the next check
