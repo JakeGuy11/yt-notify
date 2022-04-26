@@ -35,7 +35,7 @@ pub struct Channel {
     filter: Vec<String>,
     path: PathBuf,
     pic_path: PathBuf,
-    latest_id: Option<String>
+    latest_ids: (Option<String>, Option<String>)
 }
 
 impl Channel {
@@ -82,7 +82,7 @@ impl Channel {
             filter: filter_words,
             path: cfg_path,
             pic_path: pic_path,
-            latest_id: None
+            latest_ids: (None, None)
         };
 
         // If it's a C type channel, get the true ID and assign the latest video id
@@ -95,9 +95,9 @@ impl Channel {
 
         let _ = ret_channel.write_channel_to_file();
         
-        // Update the latest id
-        if let Ok(latest_found_id) = ret_channel.get_vid_id_from_index(0) {
-            ret_channel.latest_id = Some(latest_found_id);
+        // Update the latest ids
+        if let (Ok(latest_found_id_1), Ok(latest_found_id_2)) = (ret_channel.get_vid_id_from_index(0), ret_channel.get_vid_id_from_index(1)) {
+            ret_channel.latest_ids = (Some(latest_found_id_1), Some(latest_found_id_2));
             Ok(ret_channel)
         } else { Err(()) }
 
@@ -182,14 +182,16 @@ impl Channel {
         else { Ok(()) }
     }
 
-    pub fn update_id(&self, id: Option<String>) {
+    pub fn update_id(&self, id: (Option<String>, Option<String>)) {
+        println! ("updating id from {:?} to {:?}", self.latest_ids, id);
         let mut updated_ch = self.clone();
-        updated_ch.latest_id = id;
+        updated_ch.latest_ids = id;
         updated_ch.write_channel_to_file().unwrap();
     }
 
-    pub fn get_latest_id(&self, default: &String) -> String {
-        if let Some(id) = &self.latest_id { String::from(id) } else { String::from(default) }
+    pub fn get_latest_id(&self, default: &String) -> (String, String) {
+        if let (Some(id_1), Some(id_2)) = &self.latest_ids { (String::from(id_1), String::from(id_2)) }
+        else { (default.to_string(), default.to_string()) }
     }
 }
 

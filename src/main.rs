@@ -49,58 +49,61 @@ fn main() {
 }
 
 fn start_daemon(cfg_path: &PathBuf) {
-    let mut all_channels: Vec<Channel> = Vec::new();
-
     loop {
-        println! ("In periodic");
-        // Get all the entries
         // Populate all channels
+        let mut all_channels: Vec<Channel> = Vec::new();
         for ch_path in get_saved_entries(cfg_path).iter() {
-            all_channels.push(Channel::from_file(ch_path).unwrap());
+            if let Ok(ch) = Channel::from_file(ch_path) { all_channels.push(ch); }
+            else { continue; }
         }
 
         // Go through each channel
         for channel in all_channels.iter() {
             // found the last notified id?
             let mut found_last_id = false;
-            let mut id_to_update: (Option<String>, bool) = (None, false);
             // Got through the 3 latest videos
             for i in 0..3 {
                 // If we found it, keep going
                 if found_last_id { break; }
-                println! ("on iteration {}", i);
 
                 // Get the video
-                let latest_vid = channel.clone().get_vid_id_from_index(i).unwrap();
-                if let Ok(that_vid) = youtube::populate_video_from_id(&latest_vid) {
-                    // check if it's the latest id
-                    println! ("{}, {}", that_vid.video_id, channel.get_latest_id(&that_vid.video_id));
-                    if that_vid.video_id == channel.get_latest_id(&that_vid.video_id) {
-                        id_to_update = (Some(String::from(&that_vid.video_id)), true);
-                        found_last_id = true;
-                    }
+                if let Ok(latest_vid) = channel.clone().get_vid_id_from_index(i) {
+                    if let Ok(that_vid) = youtube::populate_video_from_id(&latest_vid) {
+                        // check if it's the latest id
+                        let latest_ids = channel.get_latest_id(&that_vid.video_id);
+                        found_last_id = found_last_id || that_vid.video_id == latest_ids.0 || that_vid.video_id == latest_ids.1;
 
-                    // if it's the first video and 
-                    if i == 0 && !found_last_id {
-                        id_to_update.0 = Some(String::from(&that_vid.video_id));
-                        id_to_update.1 = true;
-                        notify_video(&that_vid);
-                    } else if !found_last_id {
-                        notify_video(&that_vid);
+                        // if it's the first video we're checking and it's new, update it and notify the user respectively
+                        if !found_last_id {
+                            println! ("there's something new (current video id is {}; latest ids are {:?})", that_vid.video_id, channel.get_latest_id(&that_vid.video_id));
+                            println! ("on iteration {}; found_last_id is now {}", i, found_last_id);
+                            println! ("video id is {}", that_vid.video_id);
+                            notify_video(&that_vid, &channel.name);
+                            if i == 0 {
+                                // Get the first 2 ids
+                                let id_1 = String::from(&that_vid.video_id);
+                                let id_2 = {
+                                    if let Ok(second_vid_raw) = channel.clone().get_vid_id_from_index(1) {
+                                        if let Ok(second_vid) = youtube::populate_video_from_id(&second_vid_raw) {
+                                            Some(second_vid.video_id)
+                                        } else { None }
+                                    } else { None }
+                                };
+                                channel.update_id((Some(id_1), id_2));
+                            }
+                        }
                     }
                 }
             }
-            if id_to_update.1 { channel.update_id(id_to_update.0); }
         }
 
         // Wait for the next check
-        all_channels = Vec::new();
         std::thread::sleep(std::time::Duration::from_secs(15));
     }
 }
 
-fn notify_video(vid: &youtube::Video) {
-    println! ("{:?}", vid.video_title);
+fn notify_video(vid: &youtube::Video, uploader: &String) {
+    println! ("New video by {}: {:?}", uploader, vid.video_title);
 }
 
 // Parse command line arguments
@@ -232,7 +235,9 @@ fn get_saved_entries(entry_path: &PathBuf) -> Vec<PathBuf> {
     let mut ret_vec: Vec<PathBuf> = Vec::new();
     for current_path_res in all_paths {
         if let Ok(current_path) = current_path_res {
-            if !current_path.path().is_dir() { ret_vec.push(current_path.path()); }
+            if let Some(ext) = current_path.path().as_path().extension() {
+                if ext.to_str() == Some("json") { ret_vec.push(current_path.path()); }
+            }
         } else { continue; }
     }
     
