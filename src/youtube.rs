@@ -34,7 +34,7 @@ pub struct Channel {
     channel_type: ChannelType,
     filter: Vec<String>,
     path: PathBuf,
-    pic_path: PathBuf,
+    pub pic_path: PathBuf,
     latest_ids: (Option<String>, Option<String>)
 }
 

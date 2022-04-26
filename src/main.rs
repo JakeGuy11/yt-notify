@@ -1,8 +1,10 @@
 extern crate home;
 mod youtube;
+mod notif;
 use std::path::{PathBuf};
 use std::io::Write;
-use youtube::Channel;
+use youtube::{Channel, Video};
+use notif::{Notif, NotifPrefs};
 
 #[derive(Debug)]
 enum Intent {
@@ -78,7 +80,7 @@ fn start_daemon(cfg_path: &PathBuf) {
                             println! ("there's something new (current video id is {}; latest ids are {:?})", that_vid.video_id, channel.get_latest_id(&that_vid.video_id));
                             println! ("on iteration {}; found_last_id is now {}", i, found_last_id);
                             println! ("video id is {}", that_vid.video_id);
-                            notify_video(&that_vid, &channel.name);
+                            notify_video(&that_vid, &channel);
                             if i == 0 {
                                 // Get the first 2 ids
                                 let id_1 = String::from(&that_vid.video_id);
@@ -102,8 +104,20 @@ fn start_daemon(cfg_path: &PathBuf) {
     }
 }
 
-fn notify_video(vid: &youtube::Video, uploader: &String) {
-    println! ("New video by {}: {:?}", uploader, vid.video_title);
+fn notify_video(vid: &Video, channel: &Channel) {
+    let mut prefs = NotifPrefs::new();
+    prefs.timeout(10).urgency(notify_rust::NotificationUrgency::Normal);
+
+    let mut notif = Notif::new();
+    notif.video(vid).channel(channel).preferences(&prefs);
+
+    if let Err(e) = notif.build() {
+        eprintln! ("Couldn't notify; {:?}", e);
+    } else {
+        if let Err(e) = notif.exec() {
+            eprintln! ("Couldn't notify; {:?}", e);
+        }
+    }
 }
 
 // Parse command line arguments
