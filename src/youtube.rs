@@ -39,7 +39,6 @@ pub struct Channel {
 }
 
 impl Channel {
-
     // Create a new Channel
     pub fn new(channel_name: String, channel_url: String, base_path: &PathBuf, filter_words: Vec<String>) -> Result<Channel, ()> {
 
@@ -126,15 +125,6 @@ impl Channel {
         }
     } // end get_req_url
 
-    // Get the request url
-    /*fn get_vids_url(&mut self) -> String {
-        match self.channel_type {
-            ChannelType::Channel => { format!("https://www.youtube.com/feeds/videos.xml?channel_id={}", self.channel_id) },
-            ChannelType::User => { format!("https://www.youtube.com/feeds/videos.xml?user={}", self.channel_id) },
-            ChannelType::C => { let _ = self.get_true_channel(); format!("https://www.youtube.com/feeds/videos.xml?channel_id={}", self.channel_id) }
-        }
-    } // end get_req_url */
-
     // Get the latest video ID
     pub fn get_vid_id_from_index(&self, index: u8) -> Result<String, ()> {
         // Make the command, execute it and get the stdout
@@ -193,6 +183,16 @@ impl Channel {
         if let (Some(id_1), Some(id_2)) = &self.latest_ids { (String::from(id_1), String::from(id_2)) }
         else { (default.to_string(), default.to_string()) }
     }
+
+    pub fn passes_filter(&self, vid: &Video) -> bool {
+        let mut show = false;
+
+        for filter in self.filter.iter() {
+            show = show || vid.video_title.contains(filter) || vid.video_desc.contains(filter);
+        }
+    
+        show
+    }
 }
 
 pub fn populate_video_from_id(id: &String) -> Result<Video, ()> {
@@ -226,34 +226,3 @@ pub fn populate_video_from_id(id: &String) -> Result<Video, ()> {
         })
     } else { Err(()) }
 }
-
-/*
-fn populate_video_from_id(lines: &String) -> Video {
-    // Get the title
-    let titles_regex = regex::Regex::new("<title>|</title>").unwrap();
-    let title_vec = titles_regex.split(lines.as_str()).collect::<Vec<_>>();
-    let title = String::from(*title_vec.get(1).unwrap());
-
-    // Get the ID
-    let id_regex = regex::Regex::new("<yt:videoId>|</yt:videoId>").unwrap();
-    let id_vec = id_regex.split(lines.as_str()).collect::<Vec<_>>();
-    let id = String::from(*id_vec.get(1).unwrap());
-
-    // Get the desc
-    let desc_regex = regex::Regex::new("<media:description>|</media:description>").unwrap();
-    let desc_vec = desc_regex.split(lines.as_str()).collect::<Vec<_>>();
-    let desc = String::from(*desc_vec.get(1).unwrap());
-
-    Video {
-        video_title: title,
-        video_id: id,
-        video_desc: desc,
-        image: None
-    }
-}*/
-
-/*fn get_page_lines(url: &String) -> String {
-    // Request it
-    let res = easy_http_request::DefaultHttpRequest::get_from_url_str(url).unwrap().send().unwrap();
-    String::from_utf8(res.body).unwrap()
-}*/

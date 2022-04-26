@@ -56,7 +56,7 @@ impl<'a> Notif<'a> {
         let video = self.video_field.unwrap();
         let prefs = self.prefs_field.unwrap();
 
-        if passes_notif_filter(video, channel) {
+        if channel.passes_filter(video) {
             let summary = video.video_title.as_str();
             let body = if video.is_live { format! ("{} is live", channel.name) } else { format! ("{} has uploaded a video", channel.name) };
             let icon = std::path::PathBuf::from(&channel.pic_path);
@@ -100,8 +100,4 @@ impl NotifPrefs {
         self.urgency = Some(urg);
         self
     }
-}
-
-fn passes_notif_filter(video: &Video, channel: &Channel) -> bool {
-    true
 }
