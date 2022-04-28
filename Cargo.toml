@@ -8,6 +8,7 @@ edition = "2018"
 [dependencies]
 notify-rust = "3.6.3"
 home = "0.5.3"
+tokio = { version = "1", features = ["full"] }
 easy-http-request = "0.2.12"
 regex = "1.5.4"
 chrono = "0.4.19"

@@ -1,4 +1,5 @@
 extern crate home;
+extern crate tokio;
 mod youtube;
 mod notif;
 use std::path::{PathBuf};
@@ -11,6 +12,7 @@ enum Intent {
     AddChannel(Result<youtube::Channel, ()>),
     RemoveChannel(String),
     EditChannel(String),
+    Archive,
     StartDaemon,
     DumpEntries
 }
@@ -36,6 +38,13 @@ fn main() {
             },
             Intent::EditChannel(id) => {
                 println! ("Eventually, I will edit the channel with id {}", id);
+            },
+            Intent::Archive => {
+                let p = std::path::Path::new("/home/jake/downloads/").to_path_buf();
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                let start_fn = start_archive_daemon(&cfg_path, &p);
+                rt.block_on(start_fn);
+                
             },
             Intent::StartDaemon => { usr_start_daemon = true; },
             Intent::DumpEntries => { 
@@ -116,6 +125,73 @@ fn start_daemon(cfg_path: &PathBuf) {
     }
 }
 
+async fn start_archive_daemon(cfg_path: &PathBuf, archive_path: &PathBuf) {
+	loop {
+		// Populate all channels
+        let mut all_channels: Vec<Channel> = Vec::new();
+        for ch_path in get_saved_entries(cfg_path).iter() {
+            if let Ok(ch) = Channel::from_file(ch_path) {
+				if ch.archive { all_channels.push(ch); }
+			}
+        }
+		
+		// Go through each channel
+        for channel in all_channels.iter() {
+            // Get the latest video
+			let latest_vid = {
+				if let Ok(id) = channel.get_vid_id_from_index(0) {
+					if let Ok(vid) = youtube::populate_video_from_id(&id) { vid }
+					else { continue; }
+				} else { continue; }
+			};
+			
+			// Continue if it's not live; if it is, check if we're archiving
+			if !latest_vid.is_live { continue; }
+			else {
+				// Get what the title will be
+				let date = "";
+				let title = format! ("[{}]{}.mp4", date, latest_vid.video_title);
+				let mut expected_path = archive_path.clone();
+				expected_path.push(title);
+				
+				if !expected_path.as_path().exists() {
+					// It's not being archived; start it
+                    let _ = tokio::task::spawn_blocking(move || {
+                        archive_stream(latest_vid.video_id,
+                            String::from(expected_path.as_path().to_str().unwrap()))
+                    });
+				}
+			}
+        }
+
+        // Wait for the next check
+        std::thread::sleep(std::time::Duration::from_secs(15));
+	}
+}
+
+fn archive_stream(vid_id: String, out_file: String) {
+    let youtube_dl_output = std::process::Command::new("youtube-dl")
+        .arg("-f")
+        .arg("best")
+        .arg("-g")
+        .arg(format! ("https://www.youtube.com/watch?v={}", vid_id)).output();
+
+    if let Ok(out_bad) = youtube_dl_output {
+        if let Ok(out) = std::str::from_utf8(&out_bad.stdout) {
+            // We have our download url; archive it
+            let mut cmd = std::process::Command::new("ffmpeg");
+            let _ = cmd.arg("-i")
+                .arg(out)
+                .arg("-loglevel")
+                .arg("panic")
+                .arg("-c")
+                .arg("copy")
+                .arg(out_file)
+                .status();
+        }
+    }
+}
+
 fn notify_video(vid: &Video, channel: &Channel) {
     let mut prefs = NotifPrefs::new();
     prefs.timeout(0).urgency(notify_rust::NotificationUrgency::Normal);
@@ -143,6 +219,7 @@ fn find_intents(save_path: &PathBuf) -> std::vec::Vec<Intent> {
         match all_args.get(arg).unwrap().as_str() {
             "-s" | "--start-daemon" => { ret_intents.push(Intent::StartDaemon); },
             "-a" | "--add-channel" => { ret_intents.push(Intent::AddChannel(prompt_channel(save_path))); },
+            "--archive" => { ret_intents.push(Intent::Archive); },
             "-r" | "--remove-channel" => { ret_intents.push(Intent::RemoveChannel(prompt_string("Enter the \x1b[93mID\x1b[0m of the channel you would like to remove:"))); },
             "-e" | "--edit-channel" => { ret_intents.push(Intent::EditChannel(prompt_string("Enter the \x1b[93mID\x1b[0m of the channel you would like to edit:"))); },
             "-d" | "--dump" => { ret_intents.push(Intent::DumpEntries); },
@@ -163,8 +240,20 @@ fn prompt_channel(save_path: &PathBuf) -> Result<youtube::Channel, ()> {
     let mut keywords_string: Vec<String> = Vec::new();
     for current_str in keywords_str.split(",") { keywords_string.push(String::from(current_str)); }
 
+    // Archive settings
+    let archive = match prompt_string("Would you like to archive livestreams from this channel? [Y/n]").as_str() {
+        "y" | "Y" => true,
+        _ => false
+    };
+    let a_filters = if archive {
+        let a_keywords_str = prompt_string("Enter a comma-separated list of keywords you'd like to archive streams with. Leave blank if you would like to archive everything.");
+        let mut a_keywords_string: Vec<String> = Vec::new();
+        for current_str in a_keywords_str.split(",") { a_keywords_string.push(String::from(current_str)); }
+        Some(a_keywords_string)
+    } else { None };
+
     println! ("Verifying and saving channel \"{}\"...", name);
-    youtube::Channel::new(name, url, save_path, keywords_string)
+    Channel::new(name, url, save_path, keywords_string, archive, a_filters)
 }
 
 // Prompt the user for a string

@@ -35,12 +35,14 @@ pub struct Channel {
     filter: Vec<String>,
     path: PathBuf,
     pub pic_path: PathBuf,
+    pub archive: bool,
+    pub archive_filter: Option<Vec<String>>,
     latest_ids: (Option<String>, Option<String>)
 }
 
 impl Channel {
     // Create a new Channel
-    pub fn new(channel_name: String, channel_url: String, base_path: &PathBuf, filter_words: Vec<String>) -> Result<Channel, ()> {
+    pub fn new(channel_name: String, channel_url: String, base_path: &PathBuf, filter_words: Vec<String>, to_archive: bool, a_filters: Option<Vec<String>>) -> Result<Channel, ()> {
 
         // Throw a tantrum if any of the args are empty
         if &channel_name == "" || &channel_url == "" { return Err(()); }
@@ -81,6 +83,8 @@ impl Channel {
             filter: filter_words,
             path: cfg_path,
             pic_path: pic_path,
+            archive: to_archive,
+            archive_filter: a_filters,
             latest_ids: (None, None)
         };
 
@@ -209,9 +213,15 @@ pub fn populate_video_from_id(id: &String) -> Result<Video, ()> {
 
     // Parse the json
     if let Ok(parsed_out) = json::parse(out_str) {
-        let title = if let Some(parsed_title) = parsed_out["title"].as_str() { parsed_title } else { return Err(()) };
         let desc = if let Some(parsed_desc) = parsed_out["description"].as_str() { parsed_desc } else { return Err(()) };
         let live = if let Some(parsed_live) = parsed_out["is_live"].as_bool() { parsed_live } else { false };
+        let title = if let Some(parsed_title) = parsed_out["title"].as_str() {
+            if live {
+                &parsed_title[0..(parsed_title.len()-17)]
+            } else {
+                parsed_title
+            }
+        } else { return Err(()) };
         let tags = {
             let tags_raw = String::from(parsed_out["tags"].dump());
             let mut chars = tags_raw.chars();
