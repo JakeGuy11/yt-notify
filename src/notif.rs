@@ -70,7 +70,6 @@ impl<'a> Notif<'a> {
                 .timeout(timeout)
                 .urgency(urgency)
                 .show()?;
-            
             Ok(())
         } else { Ok(())}
     }

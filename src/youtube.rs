@@ -184,13 +184,20 @@ impl Channel {
         else { (default.to_string(), default.to_string()) }
     }
 
-    pub fn passes_filter(&self, vid: &Video) -> bool {
-        let mut show = false;
+    pub fn init_update(&self) -> Result<(), ()> {
+        if let (Ok(id_1), Ok(id_2)) = (self.get_vid_id_from_index(0), self.get_vid_id_from_index(1)) {
+            self.update_id((Some(id_1), Some(id_2)));
+            Ok(())
+        } else { Err(()) }
+    }
 
+    pub fn passes_filter(&self, vid: &Video) -> bool {
+        if self.filter.len() == 0 { return true; }
+        
+        let mut show = false;
         for filter in self.filter.iter() {
             show = show || vid.video_title.contains(filter) || vid.video_desc.contains(filter);
         }
-    
         show
     }
 }

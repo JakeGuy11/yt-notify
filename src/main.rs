@@ -51,12 +51,24 @@ fn main() {
 }
 
 fn start_daemon(cfg_path: &PathBuf) {
+    // Update all channels first
+    for ch_path in get_saved_entries(cfg_path).iter() {
+        if let Ok(ch) = Channel::from_file(ch_path) {
+            if let Err(_) = ch.init_update() {
+                eprintln! ("Could not re-initialize channel {}; using latest ids {} and {}",
+                    ch.name,
+                    ch.get_latest_id(&"INVALID".to_string()).0,
+                    ch.get_latest_id(&"INVALID".to_string()).1);
+            }
+        }
+    }
+
+    // Start the loop
     loop {
         // Populate all channels
         let mut all_channels: Vec<Channel> = Vec::new();
         for ch_path in get_saved_entries(cfg_path).iter() {
             if let Ok(ch) = Channel::from_file(ch_path) { all_channels.push(ch); }
-            else { continue; }
         }
 
         // Go through each channel
@@ -106,7 +118,7 @@ fn start_daemon(cfg_path: &PathBuf) {
 
 fn notify_video(vid: &Video, channel: &Channel) {
     let mut prefs = NotifPrefs::new();
-    prefs.timeout(10).urgency(notify_rust::NotificationUrgency::Normal);
+    prefs.timeout(0).urgency(notify_rust::NotificationUrgency::Normal);
 
     let mut notif = Notif::new();
     notif.video(vid).channel(channel).preferences(&prefs);
